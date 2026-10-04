@@ -1,8 +1,8 @@
-# DeepGaurd Architecture
+# DeepGuard Architecture
 
 ## 1. Project Overview
 
-DeepGaurd is an AI-based deepfake detection system for analyzing images
+DeepGuard is an AI-based deepfake detection system for analyzing images
 and videos and determining whether the media is real or manipulated.
 
 The project is divided into independent modules so that each team member
