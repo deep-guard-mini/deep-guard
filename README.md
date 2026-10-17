@@ -1,2 +1,2 @@
 # deep-guard
-DeepGaurd - AI-based deepfake detection system for image and video analysis.
+DeepGuard - AI-based deepfake detection system for image and video analysis.
