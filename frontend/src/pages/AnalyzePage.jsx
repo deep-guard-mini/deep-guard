@@ -1,18 +1,19 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { motion } from 'framer-motion'
-import { Download, Printer } from 'lucide-react'
+import { AlertTriangle, Download, Printer } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import UploadZone from '../components/UploadZone'
 import MediaPreview from '../components/MediaPreview'
 import Scanner from '../components/Scanner'
 import ResultCard from '../components/ResultCard'
 import ForensicIndicators from '../components/ForensicIndicators'
-import { analyzeMedia as analyzeMockMedia } from '../services/api'
+import { analyzeMedia } from '../services/api'
 
 export default function AnalyzePage({ onAnalysisComplete }) {
   const [selectedFile, setSelectedFile] = useState(null)
   const [isScanning, setIsScanning] = useState(false)
   const [scanResult, setScanResult] = useState(null)
+  const [scanError, setScanError] = useState(null)
   const inputRef = useRef(null)
 
   const previewUrl = useMemo(() => {
@@ -31,12 +32,14 @@ export default function AnalyzePage({ onAnalysisComplete }) {
   const handleFileSelection = (file) => {
     setSelectedFile(file)
     setScanResult(null)
+    setScanError(null)
     setIsScanning(false)
   }
 
   const handleRemove = () => {
     setSelectedFile(null)
     setScanResult(null)
+    setScanError(null)
     setIsScanning(false)
     if (inputRef.current) {
       inputRef.current.value = ''
@@ -67,26 +70,35 @@ export default function AnalyzePage({ onAnalysisComplete }) {
     if (!selectedFile) return
 
     setIsScanning(true)
-    const result = await analyzeMockMedia(selectedFile)
+    setScanError(null)
+    setScanResult(null)
 
-    setTimeout(() => {
-      const report = {
-        ...result,
-        filename: selectedFile.name,
-        type: selectedFile.type.startsWith('video/') ? 'video' : 'image',
-        mediaType: selectedFile.type.startsWith('video/') ? 'video' : 'image',
-        reportId: getReportId(),
-        analysisDate: new Date().toISOString(),
-        fileSize: `${(selectedFile.size / 1024 / 1024).toFixed(2)} MB`,
-        resolution: selectedFile.type.startsWith('image/') ? '—' : '—',
-        framesAnalyzed: result.framesAnalyzed || 120,
-        facesDetected: result.facesDetected || 2,
-      }
-
-      setScanResult(report)
+    let result
+    try {
+      // Phase 2: real fetch to /api/detect/image or /api/detect/video via Vite proxy
+      result = await analyzeMedia(selectedFile)
+    } catch (err) {
       setIsScanning(false)
-      onAnalysisComplete(report)
-    }, 5600)
+      setScanError(err.userMessage ?? 'An unexpected error occurred. Please try again.')
+      return
+    }
+
+    const report = {
+      ...result,
+      filename: selectedFile.name,
+      type: selectedFile.type.startsWith('video/') ? 'video' : 'image',
+      mediaType: result.mediaType ?? (selectedFile.type.startsWith('video/') ? 'video' : 'image'),
+      reportId: getReportId(),
+      analysisDate: new Date().toISOString(),
+      fileSize: `${(selectedFile.size / 1024 / 1024).toFixed(2)} MB`,
+      resolution: selectedFile.type.startsWith('image/') ? '—' : '—',
+      framesAnalyzed: result.framesAnalyzed ?? (selectedFile.type.startsWith('video/') ? 120 : 1),
+      facesDetected: result.facesDetected ?? 2,
+    }
+
+    setScanResult(report)
+    setIsScanning(false)
+    onAnalysisComplete(report)
   }
 
   return (
@@ -102,8 +114,25 @@ export default function AnalyzePage({ onAnalysisComplete }) {
 
       {!selectedFile && <UploadZone onSelectFile={handleFileSelection} inputRef={inputRef} />}
 
-      {selectedFile && !isScanning && !scanResult && (
+      {selectedFile && !isScanning && !scanResult && !scanError && (
         <MediaPreview file={selectedFile} previewUrl={previewUrl} onRemove={handleRemove} onAnalyze={startAnalysis} />
+      )}
+
+      {/* ── Error state ─────────────────────────────────────────────────── */}
+      {scanError && (
+        <motion.div
+          className="scan-error-banner"
+          role="alert"
+          initial={{ opacity: 0, y: -12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3 }}
+        >
+          <AlertTriangle size={18} aria-hidden="true" />
+          <span>{scanError}</span>
+          <button type="button" className="ghost-button" onClick={handleRemove}>
+            TRY AGAIN
+          </button>
+        </motion.div>
       )}
 
       {(isScanning || scanResult) && (
