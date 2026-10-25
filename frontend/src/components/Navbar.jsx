@@ -1,5 +1,7 @@
+import { useEffect, useState } from 'react'
 import { Link, NavLink } from 'react-router-dom'
 import { ScanSearch, ShieldCheck } from 'lucide-react'
+import { checkHealth } from '../services/api'
 
 const navItems = [
   { to: '/', label: 'Home' },
@@ -10,6 +12,26 @@ const navItems = [
 ]
 
 export default function Navbar() {
+  const [isOnline, setIsOnline] = useState(true)
+
+  useEffect(() => {
+    let isMounted = true
+    checkHealth()
+      .then((data) => {
+        if (isMounted) {
+          setIsOnline(data?.status === 'ok')
+        }
+      })
+      .catch(() => {
+        if (isMounted) {
+          setIsOnline(false)
+        }
+      })
+    return () => {
+      isMounted = false
+    }
+  }, [])
+
   return (
     <header className="site-header">
       <nav className="navbar container" aria-label="Main navigation">
@@ -35,8 +57,8 @@ export default function Navbar() {
 
         <div className="header-actions">
           <div className="status-pill" aria-live="polite">
-            <span className="status-dot" />
-            System Status: ONLINE
+            <span className={`status-dot ${isOnline ? '' : 'offline'}`} />
+            System Status: {isOnline ? 'ONLINE' : 'OFFLINE'}
           </div>
           <Link to="/analyze" className="primary-button small-button">
             Start Analysis

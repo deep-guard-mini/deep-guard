@@ -5,11 +5,12 @@ import { defineConfig } from 'vite'
 export default defineConfig({
   plugins: [react()],
   server: {
+    port: 5173,
     proxy: {
-      // Forward /api/* to the FastAPI backend (Phase 2 integration).
+      // Forward /api/* to the FastAPI backend (http://localhost:8000)
       // The /api prefix is preserved — backend routes already include it.
       '/api': {
-        target: 'http://127.0.0.1:8000',
+        target: 'http://localhost:8000',
         changeOrigin: true,
       },
     },
