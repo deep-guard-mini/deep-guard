@@ -1,106 +1,196 @@
 /**
- * api.js — Phase 2 frontend–backend integration
+ * api.js — DeepGuard frontend-to-backend API integration
  *
- * analyzeMedia(file) sends the file to the appropriate backend endpoint
- * using multipart/form-data (no manual Content-Type header — the browser
- * sets the boundary automatically).
+ * Provides real API calls to the FastAPI backend:
+ *   - checkHealth(): GET /api/health
+ *   - detectImage(file): POST /api/detect/image
+ *   - detectVideo(file): POST /api/detect/video
+ *   - analyzeMedia(file): Dispatches to detectImage or detectVideo based on file type
  *
- * On success the backend returns the full detection payload that matches the
- * shape expected by ResultCard, ForensicIndicators and AnalyzePage.
- *
- * On failure a descriptive Error is thrown with a `userMessage` property that
- * AnalyzePage can surface in the UI.
- *
- * The legacy mockAnalysis export is preserved for any code that still imports
- * it directly.
+ * File uploads use multipart/form-data via FormData with field name "file".
+ * Content-Type header is intentionally omitted so the browser automatically
+ * computes the proper boundary.
  */
 
 import { analyzeMedia as mockAnalyzeMedia } from './mockAnalysis.js'
 
+const API_BASE_URL = (import.meta.env?.VITE_API_BASE_URL || '/api').replace(/\/$/, '')
+
 /**
- * Determine which detection endpoint to use based on the file's MIME type.
- *
- * @param {File} file
- * @returns {'/api/detect/image' | '/api/detect/video'}
+ * Handle network errors uniformly across all API requests.
  */
-function endpointForFile(file) {
-  if (file && file.type && file.type.startsWith('video/')) {
-    return '/api/detect/video'
-  }
-  return '/api/detect/image'
+function handleNetworkError(err) {
+  if (err?.userMessage) throw err
+  const networkError = new Error('Network error — could not reach the DeepGuard backend.')
+  networkError.userMessage =
+    'Unable to connect to the analysis server. Please check that the backend is running at http://localhost:8000 and try again.'
+  networkError.cause = err
+  throw networkError
 }
 
 /**
- * Send `file` to the backend for deepfake analysis.
- *
- * @param {File} file  – The image or video File object chosen by the user.
- * @returns {Promise<object>}  – The parsed JSON detection payload.
- * @throws {Error}  – With a `.userMessage` string suitable for display.
+ * Handle and parse HTTP response, converting error codes to user-friendly messages.
  */
-export async function analyzeMedia(file) {
-  const endpoint = endpointForFile(file)
-
-  // Build multipart body — do NOT set Content-Type manually; the browser
-  // adds the boundary for us when we pass a FormData instance.
-  const body = new FormData()
-  body.append('file', file)
-
-  let response
-  try {
-    response = await fetch(endpoint, {
-      method: 'POST',
-      body,
-    })
-  } catch (networkErr) {
-    const err = new Error('Network error — could not reach the DeepGuard backend.')
-    err.userMessage =
-      'Unable to connect to the analysis server. Please check that the backend is running and try again.'
-    throw err
-  }
-
+async function handleResponse(response) {
   if (!response.ok) {
-    // Attempt to parse a structured error body from the backend.
     let detail = null
     try {
-      const json = await response.json()
-      detail = json?.detail ?? json
+      detail = await response.json()
     } catch {
-      // Body was not valid JSON — fall through to generic message.
+      // Non-JSON response body
     }
 
-    const statusText = `HTTP ${response.status}`
-    let userMessage
+    const errorPayload =
+      detail && typeof detail === 'object' && 'detail' in detail
+        ? detail.detail
+        : detail
 
-    if (response.status === 413) {
-      userMessage = 'The file is too large. Please upload a file under 100 MB.'
-    } else if (response.status === 415) {
+    let errorCode = ''
+    let serverMessage = ''
+    if (typeof errorPayload === 'object' && errorPayload !== null) {
+      errorCode = errorPayload.error || ''
+      serverMessage = errorPayload.message || ''
+    } else if (typeof errorPayload === 'string') {
+      serverMessage = errorPayload
+    }
+
+    let userMessage = ''
+    if (response.status === 400 || errorCode === 'MISSING_FILE' || errorCode === 'INVALID_FILE') {
+      userMessage = serverMessage || 'No file was provided or the file is invalid. Please select a valid file to analyze.'
+    } else if (response.status === 413 || errorCode === 'FILE_TOO_LARGE') {
+      userMessage = serverMessage || 'The file is too large. Please upload a file under 100 MB.'
+    } else if (response.status === 415 || errorCode === 'UNSUPPORTED_FORMAT') {
       userMessage =
-        detail?.message ??
+        serverMessage ||
         'Unsupported file format. Please upload a JPEG, PNG, WebP image or MP4, MOV, AVI video.'
     } else if (response.status === 422) {
-      userMessage = 'The file field was missing from the request. Please try again.'
-    } else if (response.status >= 500) {
+      userMessage = 'The file field was missing or invalid. Please select a valid file to analyze.'
+    } else if (response.status >= 500 || errorCode === 'PROCESSING_FAILED') {
       userMessage =
-        detail?.message ??
-        'The analysis server encountered an error. Please try again in a moment.'
+        serverMessage ||
+        'The analysis server encountered an error processing your file. Please try again.'
     } else {
-      userMessage = detail?.message ?? `Analysis failed (${statusText}).`
+      userMessage = serverMessage || `Analysis failed (HTTP ${response.status}).`
     }
 
-    const err = new Error(`Backend returned ${statusText}: ${JSON.stringify(detail)}`)
-    err.userMessage = userMessage
+    const err = new Error(userMessage)
     err.status = response.status
+    err.code = errorCode
+    err.userMessage = userMessage
     err.detail = detail
     throw err
   }
 
-  const data = await response.json()
-  return data
+  try {
+    return await response.json()
+  } catch {
+    const err = new Error('Invalid JSON response received from backend.')
+    err.userMessage = 'Received an invalid response from the analysis server.'
+    throw err
+  }
 }
 
 /**
- * Legacy export — preserved for backwards compatibility.
- * Returns synchronous mock data without hitting the backend.
+ * Check backend service health.
+ *
+ * @returns {Promise<{ status: string, service: string, version: string }>}
+ */
+export async function checkHealth() {
+  let response
+  try {
+    response = await fetch(`${API_BASE_URL}/health`)
+  } catch (err) {
+    handleNetworkError(err)
+  }
+  return handleResponse(response)
+}
+
+/**
+ * Send an image file to the backend for deepfake analysis.
+ *
+ * @param {File} file - JPEG, PNG, or WebP file
+ * @returns {Promise<object>} - Backend detection response
+ */
+export async function detectImage(file) {
+  if (!file) {
+    const err = new Error('No file provided')
+    err.userMessage = 'Please select an image file to analyze.'
+    throw err
+  }
+
+  const formData = new FormData()
+  formData.append('file', file)
+
+  let response
+  try {
+    response = await fetch(`${API_BASE_URL}/detect/image`, {
+      method: 'POST',
+      body: formData,
+    })
+  } catch (err) {
+    handleNetworkError(err)
+  }
+
+  return handleResponse(response)
+}
+
+/**
+ * Send a video file to the backend for deepfake analysis.
+ *
+ * @param {File} file - MP4, MOV, or AVI file
+ * @returns {Promise<object>} - Backend detection response
+ */
+export async function detectVideo(file) {
+  if (!file) {
+    const err = new Error('No file provided')
+    err.userMessage = 'Please select a video file to analyze.'
+    throw err
+  }
+
+  const formData = new FormData()
+  formData.append('file', file)
+
+  let response
+  try {
+    response = await fetch(`${API_BASE_URL}/detect/video`, {
+      method: 'POST',
+      body: formData,
+    })
+  } catch (err) {
+    handleNetworkError(err)
+  }
+
+  return handleResponse(response)
+}
+
+/**
+ * Check whether a file is a video by MIME type or extension.
+ *
+ * @param {File} file
+ * @returns {boolean}
+ */
+export function isVideoFile(file) {
+  if (!file) return false
+  if (file.type && file.type.startsWith('video/')) return true
+  const ext = (file.name || '').split('.').pop()?.toLowerCase()
+  return ['mp4', 'mov', 'avi'].includes(ext)
+}
+
+/**
+ * Unified media analysis dispatcher: automatically calls detectVideo or detectImage.
+ *
+ * @param {File} file - Image or video file object
+ * @returns {Promise<object>} - Detection result from FastAPI
+ */
+export async function analyzeMedia(file) {
+  if (isVideoFile(file)) {
+    return detectVideo(file)
+  }
+  return detectImage(file)
+}
+
+/**
+ * Legacy export preserved for backwards compatibility with tests/demos.
  */
 export function mockAnalysis(file) {
   return mockAnalyzeMedia(file)

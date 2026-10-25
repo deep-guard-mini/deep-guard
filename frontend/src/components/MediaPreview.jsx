@@ -9,7 +9,7 @@ const formatBytes = (bytes) => {
   return `${value.toFixed(value >= 10 || index === 0 ? 0 : 1)} ${units[index]}`
 }
 
-export default function MediaPreview({ file, previewUrl, onRemove, onAnalyze }) {
+export default function MediaPreview({ file, previewUrl, onRemove, onAnalyze, isScanning = false }) {
   const [dimensions, setDimensions] = useState('—')
   const isVideo = file?.type?.startsWith('video/')
 
@@ -53,16 +53,16 @@ export default function MediaPreview({ file, previewUrl, onRemove, onAnalyze }) 
           </div>
           <div className="meta-block-item status-item">
             <span>STATUS</span>
-            <strong>READY FOR ANALYSIS</strong>
+            <strong>{isScanning ? 'ANALYZING...' : 'READY FOR ANALYSIS'}</strong>
           </div>
         </div>
 
         <div className="preview-actions">
-          <button type="button" className="ghost-button" onClick={onRemove}>
+          <button type="button" className="ghost-button" onClick={onRemove} disabled={isScanning}>
             <X size={14} /> REMOVE
           </button>
-          <button type="button" className="primary-button" onClick={onAnalyze}>
-            {isVideo ? <Video size={16} /> : <ImageIcon size={16} />} BEGIN FORENSIC ANALYSIS
+          <button type="button" className="primary-button" onClick={onAnalyze} disabled={isScanning}>
+            {isVideo ? <Video size={16} /> : <ImageIcon size={16} />} {isScanning ? 'ANALYZING...' : 'BEGIN FORENSIC ANALYSIS'}
           </button>
         </div>
       </div>

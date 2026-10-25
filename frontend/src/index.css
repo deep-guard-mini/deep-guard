@@ -221,6 +221,11 @@ input:focus-visible,
   box-shadow: 0 0 14px rgba(74, 222, 128, 0.9);
 }
 
+.status-dot.offline {
+  background: #f87171;
+  box-shadow: 0 0 14px rgba(248, 113, 113, 0.9);
+}
+
 .primary-button,
 .secondary-button,
 .ghost-button,

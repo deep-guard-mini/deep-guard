@@ -30,10 +30,10 @@ export default function ScanProgress({ isScanning, result }) {
     return active
   }, [isScanning, result])
 
-  const frames = useAnimatedValue(result?.framesAnalyzed || 120)
-  const faces = useAnimatedValue(result?.facesDetected || 2)
-  const artifacts = useAnimatedValue(result?.artifactsDetected || 7)
-  const confidence = useAnimatedValue(result?.confidence || 87.4)
+  const frames = useAnimatedValue(result?.framesAnalyzed ?? (isScanning ? 120 : 1))
+  const faces = useAnimatedValue(result?.facesDetected ?? (isScanning ? 2 : 0))
+  const artifacts = useAnimatedValue(result?.artifactsDetected ?? (isScanning ? 7 : 0))
+  const confidence = useAnimatedValue(result?.confidence ?? 0)
   const processing = isScanning ? 67 : 100
 
   return (

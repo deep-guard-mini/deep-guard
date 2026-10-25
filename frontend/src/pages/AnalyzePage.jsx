@@ -7,7 +7,7 @@ import MediaPreview from '../components/MediaPreview'
 import Scanner from '../components/Scanner'
 import ResultCard from '../components/ResultCard'
 import ForensicIndicators from '../components/ForensicIndicators'
-import { analyzeMedia } from '../services/api'
+import { detectImage, detectVideo, isVideoFile } from '../services/api'
 
 export default function AnalyzePage({ onAnalysisComplete }) {
   const [selectedFile, setSelectedFile] = useState(null)
@@ -67,7 +67,7 @@ export default function AnalyzePage({ onAnalysisComplete }) {
   }
 
   const startAnalysis = async () => {
-    if (!selectedFile) return
+    if (!selectedFile || isScanning) return
 
     setIsScanning(true)
     setScanError(null)
@@ -75,8 +75,11 @@ export default function AnalyzePage({ onAnalysisComplete }) {
 
     let result
     try {
-      // Phase 2: real fetch to /api/detect/image or /api/detect/video via Vite proxy
-      result = await analyzeMedia(selectedFile)
+      if (isVideoFile(selectedFile)) {
+        result = await detectVideo(selectedFile)
+      } else {
+        result = await detectImage(selectedFile)
+      }
     } catch (err) {
       setIsScanning(false)
       setScanError(err.userMessage ?? 'An unexpected error occurred. Please try again.')
@@ -86,14 +89,23 @@ export default function AnalyzePage({ onAnalysisComplete }) {
     const report = {
       ...result,
       filename: selectedFile.name,
-      type: selectedFile.type.startsWith('video/') ? 'video' : 'image',
-      mediaType: result.mediaType ?? (selectedFile.type.startsWith('video/') ? 'video' : 'image'),
+      type: result.mediaType || (isVideoFile(selectedFile) ? 'video' : 'image'),
+      mediaType: result.mediaType || (isVideoFile(selectedFile) ? 'video' : 'image'),
       reportId: getReportId(),
       analysisDate: new Date().toISOString(),
       fileSize: `${(selectedFile.size / 1024 / 1024).toFixed(2)} MB`,
-      resolution: selectedFile.type.startsWith('image/') ? '—' : '—',
-      framesAnalyzed: result.framesAnalyzed ?? (selectedFile.type.startsWith('video/') ? 120 : 1),
-      facesDetected: result.facesDetected ?? 2,
+      resolution: selectedFile.type?.startsWith('image/') ? '—' : '—',
+      framesAnalyzed: result.framesAnalyzed ?? (isVideoFile(selectedFile) ? 120 : 1),
+      facesDetected: result.facesDetected ?? 0,
+      artifactsDetected: result.artifactsDetected ?? 0,
+      confidence: result.confidence ?? 0,
+      processingTime: result.processingTime ?? 0,
+      indicators: result.indicators ?? {},
+      prediction: result.prediction,
+      assessment: result.assessment,
+      assessmentTone: result.assessmentTone,
+      note: result.note,
+      demoMode: result.demoMode,
     }
 
     setScanResult(report)
@@ -115,7 +127,13 @@ export default function AnalyzePage({ onAnalysisComplete }) {
       {!selectedFile && <UploadZone onSelectFile={handleFileSelection} inputRef={inputRef} />}
 
       {selectedFile && !isScanning && !scanResult && !scanError && (
-        <MediaPreview file={selectedFile} previewUrl={previewUrl} onRemove={handleRemove} onAnalyze={startAnalysis} />
+        <MediaPreview
+          file={selectedFile}
+          previewUrl={previewUrl}
+          onRemove={handleRemove}
+          onAnalyze={startAnalysis}
+          isScanning={isScanning}
+        />
       )}
 
       {/* ── Error state ─────────────────────────────────────────────────── */}
