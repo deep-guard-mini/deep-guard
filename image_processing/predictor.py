@@ -13,7 +13,7 @@ import time
 from functools import lru_cache
 from pathlib import Path
 
-from deepguard_inference import DeepGuardImageDetector
+from .deepguard_inference import DeepGuardImageDetector
 
 
 DEFAULT_MODEL_PATH = (

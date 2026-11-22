@@ -16,5 +16,5 @@ async def health() -> dict:
     return {
         "status":  "ok",
         "service": "DeepGuard Backend",
-        "version": "1.0.0-phase1",
+        "version": "1.0.0",
     }

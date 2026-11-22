@@ -22,7 +22,11 @@ from pathlib import Path
 
 from fastapi import APIRouter, File, HTTPException, UploadFile, status
 
-from backend.services.image_service import ImageServiceError, process_image
+from backend.services.image_service import (
+    ImageServiceError,
+    InvalidImageError,
+    process_image,
+)
 from backend.services.video_service import VideoServiceError, process_video
 from backend.utils.file_validation import (
     ALLOWED_IMAGE_MIME_TYPES,
@@ -113,6 +117,16 @@ async def detect_image(file: UploadFile = File(...)) -> dict:
 
     try:
         service_result = process_image(tmp_path)
+    except InvalidImageError as exc:
+        logger.warning("Invalid or corrupt image upload: %s", exc)
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "status":  "error",
+                "error":   "INVALID_IMAGE",
+                "message": str(exc),
+            },
+        )
     except ImageServiceError as exc:
         logger.error("Image processing failed: %s", exc)
         raise HTTPException(

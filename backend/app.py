@@ -32,10 +32,9 @@ app = FastAPI(
     title="DeepGuard API",
     description=(
         "AI-based deepfake detection API for image and video analysis.\n\n"
-        "> ⚠️  **Phase 1 — Demo mode.** "
-        "ML inference is mocked; results are randomly generated for integration testing."
+        "Image analysis is powered by a trained ResNet50 deep learning model."
     ),
-    version="1.0.0-phase1",
+    version="1.0.0",
     docs_url="/api/docs",
     redoc_url="/api/redoc",
     openapi_url="/api/openapi.json",
@@ -44,12 +43,17 @@ app = FastAPI(
 # ---------------------------------------------------------------------------
 # CORS
 # ---------------------------------------------------------------------------
-# Allow the Vite development server to call the API without CORS errors.
-# For production, replace with the actual deployed frontend origin.
+# Allow Vite development servers to call the API without CORS errors.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
-    allow_methods=["GET", "POST"],
+    allow_origins=[
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
     allow_headers=["*"],
 )
 

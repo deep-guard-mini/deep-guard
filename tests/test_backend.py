@@ -17,8 +17,9 @@ import io
 import os
 from unittest.mock import patch
 
-import pytest
 from fastapi.testclient import TestClient
+
+from PIL import Image
 
 from backend.app import app
 from backend.services.image_service import ImageServiceError
@@ -30,16 +31,24 @@ from backend.services.video_service import VideoServiceError
 client = TestClient(app)
 
 # ---------------------------------------------------------------------------
-# Minimal valid file payloads (magic bytes + padding to exceed 4 bytes)
+# Valid file payloads
 #
-# Each payload begins with the format's recognised magic-byte signature so
-# _detect_mime_from_header() in file_validation.py accepts it.
-# The padding bytes that follow are not valid media data, which is fine —
-# the mock services never decode the actual file contents.
+# Generates minimal valid images (JPEG, PNG, WebP) using PIL so that both
+# file_validation magic-byte detection and real ML model decoding succeed.
 # ---------------------------------------------------------------------------
-JPEG_BYTES = b"\xff\xd8\xff\xe0" + b"\x00" * 128   # JPEG SOI marker
-PNG_BYTES  = b"\x89PNG\r\n\x1a\n" + b"\x00" * 128  # PNG file signature
-WEBP_BYTES = b"RIFF\x00\x00\x00\x00WEBP" + b"\x00" * 128
+def _generate_test_image(format_name: str, color: str = "blue") -> bytes:
+    buf = io.BytesIO()
+    img = Image.new("RGB", (32, 32), color=color)
+    img.save(buf, format=format_name)
+    return buf.getvalue()
+
+JPEG_BYTES = _generate_test_image("JPEG")
+PNG_BYTES  = _generate_test_image("PNG")
+WEBP_BYTES = _generate_test_image("WEBP")
+
+# Valid magic bytes with corrupted payload (for testing inference error handling)
+CORRUPT_JPEG_BYTES = b"\xff\xd8\xff\xe0" + b"\x00" * 128
+
 MP4_BYTES  = b"\x00\x00\x00\x18ftypisom" + b"\x00" * 128
 MOV_BYTES  = b"\x00\x00\x00\x14ftypqt  " + b"\x00" * 128
 AVI_BYTES  = b"RIFF\x00\x00\x00\x00AVI " + b"\x00" * 128
@@ -107,27 +116,43 @@ def _assert_valid_detection_response(data: dict, expected_media_type: str) -> No
     # ── mediaType ────────────────────────────────────────────────────────
     assert data["mediaType"] == expected_media_type
 
-    # ── non-negative numeric fields ───────────────────────────────────────
-    for field in ("processingTime", "facesDetected", "framesAnalyzed", "artifactsDetected"):
-        assert isinstance(data[field], (int, float)), f"{field} must be numeric"
-        assert data[field] >= 0, f"{field} must be >= 0, got {data[field]}"
+    # ── processingTime ────────────────────────────────────────────────────
+    assert isinstance(data["processingTime"], (int, float)), "processingTime must be numeric"
+    assert data["processingTime"] >= 0, f"processingTime must be >= 0, got {data['processingTime']}"
 
-    # ── indicators ───────────────────────────────────────────────────────
-    indicators = data["indicators"]
-    assert isinstance(indicators, dict), "indicators must be a dict"
-    missing_ind = _REQUIRED_INDICATOR_FIELDS - indicators.keys()
-    assert not missing_ind, f"indicators missing fields: {missing_ind}"
-    for key, val in indicators.items():
-        assert isinstance(val, (int, float)), f"indicators.{key} must be numeric"
-        assert 0 <= val <= 100, f"indicators.{key}={val} out of 0–100 range"
+    # ── Optional/mode-specific fields ─────────────────────────────────────
+    if expected_media_type == "video":
+        assert isinstance(data["framesAnalyzed"], int) and data["framesAnalyzed"] > 0
+        assert data["facesDetected"] is None or isinstance(data["facesDetected"], int)
+        assert data["artifactsDetected"] is None or isinstance(data["artifactsDetected"], int)
+        assert data["demoMode"] is True, "demoMode should be True for video demo mode"
+
+        indicators = data["indicators"]
+        assert isinstance(indicators, dict), "indicators must be a dict"
+        missing_ind = _REQUIRED_INDICATOR_FIELDS - indicators.keys()
+        assert not missing_ind, f"indicators missing fields: {missing_ind}"
+        for key, val in indicators.items():
+            if val is not None:
+                assert isinstance(val, (int, float)), f"indicators.{key} must be numeric"
+                assert 0 <= val <= 100, f"indicators.{key}={val} out of 0–100 range"
+    else:
+        assert data["framesAnalyzed"] == 1, "framesAnalyzed must be 1 for image"
+        assert data["facesDetected"] is None, "facesDetected should be None for image classifier"
+        assert data["artifactsDetected"] is None, "artifactsDetected should be None for image classifier"
+        assert data["demoMode"] is False, "demoMode should be False for real ML model"
+
+        # Forensic indicators are not produced by the ResNet50 model
+        indicators = data["indicators"]
+        assert isinstance(indicators, dict), "indicators must be a dict"
+        missing_ind = _REQUIRED_INDICATOR_FIELDS - indicators.keys()
+        assert not missing_ind, f"indicators missing fields: {missing_ind}"
+        for key, val in indicators.items():
+            assert val is None, f"indicators.{key} must be None when not analyzed"
 
     # ── note: non-empty string ────────────────────────────────────────────
     assert isinstance(data["note"], str) and len(data["note"]) > 0, (
         "note must be a non-empty string"
     )
-
-    # ── demoMode: True while mock is active ───────────────────────────────
-    assert data["demoMode"] is True, "demoMode should be True in Phase 1 mock"
 
 
 # ===========================================================================
@@ -208,20 +233,45 @@ class TestImageDetectionSuccess:
         confidence = resp.json()["confidence"]
         assert 0.0 <= confidence <= 100.0
 
-    def test_all_indicator_values_within_0_to_100(self):
+    def test_indicators_are_none_for_resnet_image(self):
         resp = client.post(
             "/api/detect/image",
             files={"file": ("photo.jpg", io.BytesIO(JPEG_BYTES), "image/jpeg")},
         )
         for key, val in resp.json()["indicators"].items():
-            assert 0 <= val <= 100, f"indicators.{key}={val} out of range"
+            assert val is None, f"indicators.{key} must be None when not analyzed"
 
-    def test_demo_mode_is_true(self):
+    def test_demo_mode_is_false(self):
         resp = client.post(
             "/api/detect/image",
             files={"file": ("photo.jpg", io.BytesIO(JPEG_BYTES), "image/jpeg")},
         )
-        assert resp.json()["demoMode"] is True
+        assert resp.json()["demoMode"] is False
+
+    def test_corrupt_image_returns_422_invalid_image(self):
+        resp = client.post(
+            "/api/detect/image",
+            files={"file": ("corrupt.jpg", io.BytesIO(CORRUPT_JPEG_BYTES), "image/jpeg")},
+        )
+        assert resp.status_code == 422
+        detail = resp.json()["detail"]
+        assert detail["status"] == "error"
+        assert detail["error"] == "INVALID_IMAGE"
+        assert "corrupt or cannot be decoded" in detail["message"]
+
+    def test_truncated_image_returns_422_invalid_image(self):
+        with open("image_processing/test_images/test.jpeg", "rb") as fh:
+            real_bytes = fh.read()
+        truncated_bytes = real_bytes[:500]
+        resp = client.post(
+            "/api/detect/image",
+            files={"file": ("truncated.jpg", io.BytesIO(truncated_bytes), "image/jpeg")},
+        )
+        assert resp.status_code == 422
+        detail = resp.json()["detail"]
+        assert detail["status"] == "error"
+        assert detail["error"] == "INVALID_IMAGE"
+        assert "corrupt or cannot be decoded" in detail["message"]
 
     def test_prediction_is_a_valid_label(self):
         resp = client.post(
@@ -522,6 +572,25 @@ class TestTempFileCleanup:
         for p in saved:
             assert not os.path.exists(p), f"Temp file not cleaned up after error: {p}"
 
+    def test_temp_file_removed_after_invalid_image_error(self):
+        saved: list[str] = []
+
+        def _spy(path: str) -> dict:
+            saved.append(path)
+            from backend.services.image_service import process_image as _real
+            return _real(path)
+
+        with patch("backend.routers.detect.process_image", side_effect=_spy):
+            resp = client.post(
+                "/api/detect/image",
+                files={"file": ("corrupt.jpg", io.BytesIO(CORRUPT_JPEG_BYTES), "image/jpeg")},
+            )
+            assert resp.status_code == 422
+
+        assert saved, "Spy was never called — temp path was not captured"
+        for p in saved:
+            assert not os.path.exists(p), f"Temp file not cleaned up after invalid image: {p}"
+
     def test_temp_file_removed_after_successful_video_analysis(self):
         saved: list[str] = []
 
@@ -539,3 +608,35 @@ class TestTempFileCleanup:
         assert saved
         for p in saved:
             assert not os.path.exists(p), f"Temp file not cleaned up: {p}"
+
+
+# ===========================================================================
+# 9. Real model smoke test
+# ===========================================================================
+
+class TestModelInferenceSmoke:
+    """
+    End-to-end smoke test verifying that the real trained model on disk
+    runs inference successfully via the API and returns a valid contract.
+    Does not assert specific predictions or artificial confidence thresholds.
+    """
+
+    def test_sample_image_inference_returns_valid_contract(self):
+        sample_path = "image_processing/test_images/test.jpeg"
+        if not os.path.isfile(sample_path):
+            return
+
+        with open(sample_path, "rb") as fh:
+            real_bytes = fh.read()
+
+        resp = client.post(
+            "/api/detect/image",
+            files={"file": ("test.jpeg", io.BytesIO(real_bytes), "image/jpeg")},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        _assert_valid_detection_response(data, expected_media_type="image")
+        assert data["demoMode"] is False
+        assert data["prediction"] in _VALID_PREDICTIONS
+        assert 0.0 <= data["confidence"] <= 100.0
+        assert data["processingTime"] > 0
