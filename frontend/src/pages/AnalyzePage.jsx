@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { motion } from 'framer-motion'
 import { AlertTriangle, Download, Printer } from 'lucide-react'
+
 import { Link } from 'react-router-dom'
 import UploadZone from '../components/UploadZone'
 import MediaPreview from '../components/MediaPreview'
 import Scanner from '../components/Scanner'
 import ResultCard from '../components/ResultCard'
-import ForensicIndicators from '../components/ForensicIndicators'
+
 import { detectImage, detectVideo, isVideoFile } from '../services/api'
 
 export default function AnalyzePage({ onAnalysisComplete }) {
@@ -179,24 +180,6 @@ export default function AnalyzePage({ onAnalysisComplete }) {
                 transition={{ duration: 0.5 }}
               >
                 <ResultCard result={scanResult} />
-                <ForensicIndicators indicators={scanResult.indicators} />
-
-                <div className="suspicious-panel">
-                  <div className="section-title-row">
-                    <h3>SUSPICIOUS REGION ANALYSIS</h3>
-                  </div>
-                  <div className="suspicious-viewport">
-                    {selectedFile?.type?.startsWith('video/') ? (
-                      <video src={previewUrl} className="suspicious-media" playsInline muted loop autoPlay />
-                    ) : (
-                      <img src={previewUrl} alt="Suspicious region overlay preview" className="suspicious-media" />
-                    )}
-                    <div className="heat-overlay" />
-                    <div className="bounding-box box-one">REGION 01<br />HIGH ANOMALY</div>
-                    <div className="bounding-box box-two">REGION 02<br />MODERATE ANOMALY</div>
-                    <div className="demo-tag">DEMONSTRATION VISUALIZATION</div>
-                  </div>
-                </div>
               </motion.div>
             </>
           )}
