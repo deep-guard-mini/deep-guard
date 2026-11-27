@@ -1,135 +1,105 @@
 """
-Video processing service — Phase 1 MOCK implementation.
+DeepGuard video processing service.
 
-This module defines the exact interface that the real Sanjeev video-processing
-integration must conform to. During Phase 1 every result is randomly generated
-demo data so the rest of the system can be developed and tested end-to-end.
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-INTEGRATION NOTE — Phase 3 replacement
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-When Sanjeev's video-processing module is ready, replace the body of
-process_video() with the real call, for example:
-
-    from video_processing.pipeline import process_video as _real_process
-
-    def process_video(video_path: str | Path) -> dict:
-        raw = _real_process(str(video_path))
-        return {
-            "prediction":        raw["prediction"],           # "REAL" | "FAKE" | "INCONCLUSIVE"
-            "confidence":        float(raw["confidence"]),    # 0.0 – 100.0
-            "faces_detected":    int(raw.get("faces_detected", 1)),
-            "frames_analyzed":   int(raw["frames_analyzed"]),
-            "artifacts_detected": int(raw.get("artifacts_detected", 0)),
-            "processing_time":   float(raw.get("processing_time", 0.0)),
-            "indicators": {
-                "face_consistency":      int(raw["indicators"]["face_consistency"]),
-                "texture_consistency":   int(raw["indicators"]["texture_consistency"]),
-                "lighting_consistency":  int(raw["indicators"]["lighting_consistency"]),
-                "compression_artifacts": int(raw["indicators"]["compression_artifacts"]),
-                "edge_artifacts":        int(raw["indicators"]["edge_artifacts"]),
-            },
-            "note":      raw.get("note", ""),
-            "demo_mode": False,   # ← set to False once real inference is active
-        }
-
-The returned dict MUST contain all keys listed in the docstring below.
-Do NOT change the key names — response_builder.py maps them to the frontend contract.
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Connects the FastAPI backend to the video inference pipeline
+(video_processing.pipeline), adapting raw pipeline outputs into
+the backend service response contract.
 """
 
 from __future__ import annotations
 
-import random
-import time
 from pathlib import Path
+from typing import Any
+
+from video_processing.pipeline import VideoProcessingError
+from video_processing.pipeline import process_video as _real_process
 
 
 class VideoServiceError(Exception):
     """Raised when the video processing pipeline cannot complete."""
 
 
-def process_video(video_path: str | Path) -> dict:
+def process_video(video_path: str | Path) -> dict[str, Any]:
     """
     Process a video file and return deepfake detection results.
 
+    Invokes the video processing pipeline to extract frames, detect faces,
+    and infer REAL / FAKE / INCONCLUSIVE predictions using the trained model.
+
     Args:
-        video_path: Absolute path to the saved video file on disk.
+        video_path: Path to the saved video file on disk.
 
     Returns:
-        A dict with the following keys (snake_case — mapped to camelCase by
-        response_builder.py):
-
-        prediction          str   "REAL" | "FAKE" | "INCONCLUSIVE"
-        confidence          float 0.0 – 100.0
-        faces_detected      int   Number of unique faces across sampled frames
-        frames_analyzed     int   Number of frames sampled during analysis
-        artifacts_detected  int   Number of manipulation artefacts detected
-        processing_time     float Wall-clock seconds taken for the full pipeline
-        indicators          dict  Five forensic consistency scores (0–100):
-                                  face_consistency, texture_consistency,
-                                  lighting_consistency, compression_artifacts,
-                                  edge_artifacts
-        note                str   Human-readable summary sentence
-        demo_mode           bool  True while the mock is active
+        A dict with snake_case keys mapped to the API contract by response_builder:
+            prediction          str   "REAL" | "FAKE" | "INCONCLUSIVE"
+            confidence          float 0.0 – 100.0
+            faces_detected      int | None
+            frames_analyzed     int | None
+            artifacts_detected  int | None
+            processing_time     float Wall-clock seconds
+            indicators          dict  Forensic scores (None when not computed)
+            probabilities       dict | None {"real": float, "fake": float}
+            note                str   Human-readable summary
+            demo_mode           bool  False (real ML inference)
 
     Raises:
         VideoServiceError: If the video cannot be processed.
     """
-    # ------------------------------------------------------------------ #
-    #  ⚠️  MOCK IMPLEMENTATION — Phase 1 only.                          #
-    #     Replace with real ML inference when Sanjeev's module is        #
-    #     integrated (Phase 3).  See module docstring for instructions.  #
-    # ------------------------------------------------------------------ #
-    _start = time.perf_counter()
-    rng = random.Random()   # unseeded → different result every call
+    try:
+        raw = _real_process(str(video_path))
+    except VideoProcessingError as exc:
+        raise VideoServiceError(f"Video processing failed: {exc}") from exc
+    except Exception as exc:
+        raise VideoServiceError(f"Unexpected video processing error: {exc}") from exc
 
-    roll = rng.random()
-    if roll < 0.42:
-        prediction = "FAKE"
-        confidence_base = 91.0
-        note = (
-            "[DEMO — No ML model active] DeepGuard identified temporal inconsistencies "
-            "across sampled frames, which are characteristic of synthetic media. "
-            "Multiple high-confidence manipulation indicators were detected."
-        )
-    elif roll < 0.76:
-        prediction = "REAL"
-        confidence_base = 88.0
-        note = (
-            "[DEMO — No ML model active] Frame-level analysis found no significant "
-            "manipulation indicators. The video appears temporally consistent and "
-            "consistent with an authentic recording."
-        )
-    else:
-        prediction = "INCONCLUSIVE"
-        confidence_base = 74.0
-        note = (
-            "[DEMO — No ML model active] Frame-level analysis produced an inconclusive "
-            "result. Partial temporal anomalies were detected but did not reach "
-            "the threshold for a definitive classification."
-        )
+    prediction = str(raw.get("prediction", "INCONCLUSIVE"))
+    confidence = float(raw.get("confidence", 0.0))
+    processing_time = float(raw.get("processing_time", 0.0))
+    note = str(raw.get("note", ""))
 
-    confidence = round(rng.uniform(confidence_base, confidence_base + 5.0), 1)
-    faces_detected = max(1, rng.randint(1, 4))
-    frames_analyzed = rng.choice([30, 60, 90, 120])
-    artifacts_detected = max(3, rng.randint(4, 12))
-    elapsed = time.perf_counter() - _start + rng.uniform(1.5, 4.5)
+    faces_detected = (
+        int(raw["faces_detected"])
+        if raw.get("faces_detected") is not None
+        else None
+    )
+    frames_analyzed = (
+        int(raw["frames_analyzed"])
+        if raw.get("frames_analyzed") is not None
+        else None
+    )
+    artifacts_detected = (
+        int(raw["artifacts_detected"])
+        if raw.get("artifacts_detected") is not None
+        else None
+    )
+
+    real_probability = raw.get("real_probability")
+    fake_probability = raw.get("fake_probability")
+
+    probabilities: dict[str, float] | None = None
+    if real_probability is not None and fake_probability is not None:
+        probabilities = {
+            "real": float(real_probability),
+            "fake": float(fake_probability),
+        }
+    elif isinstance(raw.get("probabilities"), dict):
+        probabilities = raw["probabilities"]
 
     return {
-        "prediction":         prediction,
-        "confidence":         confidence,
-        "faces_detected":     faces_detected,
-        "frames_analyzed":    frames_analyzed,
+        "prediction": prediction,
+        "confidence": confidence,
+        "faces_detected": faces_detected,
+        "frames_analyzed": frames_analyzed,
         "artifacts_detected": artifacts_detected,
-        "processing_time":    round(elapsed, 3),
+        "processing_time": processing_time,
         "indicators": {
-            "face_consistency":      rng.randint(68, 97),
-            "texture_consistency":   rng.randint(70, 95),
-            "lighting_consistency":  rng.randint(63, 91),
-            "compression_artifacts": rng.randint(66, 92),
-            "edge_artifacts":        rng.randint(74, 97),
+            "face_consistency": None,
+            "texture_consistency": None,
+            "lighting_consistency": None,
+            "compression_artifacts": None,
+            "edge_artifacts": None,
         },
-        "note":      note,
-        "demo_mode": True,
+        "probabilities": probabilities,
+        "note": note,
+        "demo_mode": False,
     }

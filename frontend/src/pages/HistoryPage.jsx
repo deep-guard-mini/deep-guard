@@ -95,6 +95,10 @@ export default function HistoryPage({ history, setHistory }) {
 
             <div className="detail-stack">
               <div className="detail-row">
+                <span>Report ID</span>
+                <strong>{selectedRecord.reportId || 'DG-2026-UNSPECIFIED'}</strong>
+              </div>
+              <div className="detail-row">
                 <span>Filename</span>
                 <strong>{selectedRecord.filename}</strong>
               </div>

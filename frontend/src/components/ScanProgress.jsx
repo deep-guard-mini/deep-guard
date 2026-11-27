@@ -1,61 +1,89 @@
+
 import { motion } from 'framer-motion'
-import { useMemo } from 'react'
 
-const defaultSteps = [
-  { label: 'MEDIA VALIDATION', status: 'complete' },
-  { label: 'FRAME EXTRACTION', status: 'complete' },
-  { label: 'FACE DETECTION', status: 'running' },
-  { label: 'VISUAL ANALYSIS', status: 'waiting' },
-  { label: 'MODEL INFERENCE', status: 'waiting' },
-  { label: 'AUTHENTICITY ASSESSMENT', status: 'waiting' },
-]
+export default function ScanProgress({ isScanning, result, evidenceId, isVideo }) {
+  const hasResult = Boolean(result)
+  const activeIsVideo = Boolean(isVideo || result?.mediaType === 'video')
+  const frames = result?.framesAnalyzed ?? (hasResult ? (activeIsVideo ? null : 1) : null)
+  const faces = result?.facesDetected
+  const artifacts = result?.artifactsDetected
+  const confidence = result?.confidence
 
-function useAnimatedValue(target) {
-  return target
-}
+  // Workflow steps representing actual ML operations
+  const steps = activeIsVideo
+    ? [
+        { label: 'MEDIA VALIDATION', status: hasResult ? 'complete' : isScanning ? 'running' : 'waiting' },
+        { label: 'FRAME EXTRACTION', status: hasResult ? 'complete' : isScanning ? 'running' : 'waiting' },
+        { label: 'TEMPORAL INFERENCE', status: hasResult ? 'complete' : isScanning ? 'running' : 'waiting' },
+        { label: 'PREDICTION GENERATION', status: hasResult ? 'complete' : 'waiting' },
+      ]
+    : [
+        { label: 'MEDIA VALIDATION', status: hasResult ? 'complete' : isScanning ? 'running' : 'waiting' },
+        { label: 'IMAGE PREPROCESSING', status: hasResult ? 'complete' : isScanning ? 'running' : 'waiting' },
+        { label: 'MODEL INFERENCE', status: hasResult ? 'complete' : isScanning ? 'running' : 'waiting' },
+        { label: 'PREDICTION GENERATION', status: hasResult ? 'complete' : 'waiting' },
+      ]
 
-export default function ScanProgress({ isScanning, result }) {
-  const steps = useMemo(() => {
-    if (!isScanning && !result) return defaultSteps
+  // Display unavailable measurements honestly without fabricating numbers.
+  const formatMetric = (value, suffix = '') =>
+    value == null ? 'Not available' : `${value}${suffix}`
 
-    const active = [
-      { label: 'MEDIA VALIDATION', status: 'complete' },
-      { label: 'FRAME EXTRACTION', status: 'complete' },
-      { label: 'FACE DETECTION', status: isScanning ? 'running' : 'complete' },
-      { label: 'VISUAL ANALYSIS', status: isScanning ? 'waiting' : 'complete' },
-      { label: 'MODEL INFERENCE', status: isScanning ? 'waiting' : 'complete' },
-      { label: 'AUTHENTICITY ASSESSMENT', status: isScanning ? 'waiting' : 'complete' },
-    ]
+  const resolvedEvidenceId = evidenceId || result?.reportId || 'DG-2026-PENDING'
 
-    return active
-  }, [isScanning, result])
+  const analysisModeLabel = activeIsVideo
+    ? hasResult
+      ? result?.demoMode
+        ? 'VIDEO AI (DEMO)'
+        : 'VIDEO AI (ML)'
+      : 'VIDEO AI'
+    : 'RESNET50 ML'
 
-  const frames = useAnimatedValue(result?.framesAnalyzed ?? (isScanning ? 120 : 1))
-  const faces = useAnimatedValue(result?.facesDetected ?? (isScanning ? 2 : 0))
-  const artifacts = useAnimatedValue(result?.artifactsDetected ?? (isScanning ? 7 : 0))
-  const confidence = useAnimatedValue(result?.confidence ?? 0)
-  const processing = isScanning ? 67 : 100
+  const modelLabel = activeIsVideo
+    ? hasResult
+      ? result?.demoMode
+        ? 'DeepGuard Temporal (Demo)'
+        : 'DeepGuard Video Classifier (ResNet50)'
+      : 'DeepGuard Video Classifier'
+    : 'DeepGuard Vision v1 (ResNet50)'
 
   return (
     <aside className="scan-progress-panel">
       <div className="progress-header">
         <span className="eyebrow">Pipeline</span>
-        <span className="live-tag">{isScanning ? 'LIVE' : 'READY'}</span>
+        <span className="live-tag">
+          {isScanning ? 'ANALYZING' : hasResult ? 'COMPLETE' : 'READY'}
+        </span>
       </div>
 
       <div className="scan-identity-row">
-        <div><span>EVIDENCE ID</span><strong>DG-2026-XXXX</strong></div>
-        <div><span>ANALYSIS MODE</span><strong>FORENSIC</strong></div>
+        <div>
+          <span>EVIDENCE ID</span>
+          <strong>{resolvedEvidenceId}</strong>
+        </div>
+        <div>
+          <span>ANALYSIS MODE</span>
+          <strong>{analysisModeLabel}</strong>
+        </div>
       </div>
 
       <div className="progress-list">
         {steps.map((step, index) => (
           <div key={step.label} className={`progress-item ${step.status}`}>
-            <span className="step-index">{String(index + 1).padStart(2, '0')}</span>
+            <span className="step-index">
+              {String(index + 1).padStart(2, '0')}
+            </span>
+
             <div className="step-copy">
               <strong>{step.label}</strong>
-              <span>{step.status === 'complete' ? '✓ Completed' : step.status === 'running' ? '● Processing' : '○ Waiting'}</span>
+              <span>
+                {step.status === 'complete'
+                  ? '✓ Completed'
+                  : step.status === 'running'
+                    ? '◉ Processing'
+                    : '○ Waiting'}
+              </span>
             </div>
+
             <span className="step-bullet" aria-hidden="true" />
           </div>
         ))}
@@ -63,42 +91,59 @@ export default function ScanProgress({ isScanning, result }) {
 
       <div className="scan-metrics-grid">
         <div>
-          <span className="metric-label">FRAME</span>
-          <strong>{String(Math.min(Math.round(frames), 120)).padStart(3, '0')} / 120</strong>
+          <span className="metric-label">{activeIsVideo ? 'FRAMES ANALYZED' : 'IMAGES ANALYZED'}</span>
+          <strong>{formatMetric(frames)}</strong>
         </div>
+
         <div>
           <span className="metric-label">FACES DETECTED</span>
-          <strong>{String(Math.round(faces)).padStart(2, '0')}</strong>
+          <strong>{formatMetric(faces)}</strong>
         </div>
+
         <div>
           <span className="metric-label">ARTIFACTS</span>
-          <strong>{String(Math.round(artifacts)).padStart(2, '0')}</strong>
+          <strong>{formatMetric(artifacts)}</strong>
         </div>
+
         <div>
           <span className="metric-label">MODEL CONFIDENCE</span>
-          <strong>{confidence.toFixed(1)}%</strong>
+          <strong>{confidence != null ? `${confidence.toFixed(1)}%` : 'Not analyzed'}</strong>
         </div>
       </div>
 
       <div className="processing-bar-wrap">
         <div className="processing-meta">
-          <span>PROCESSING</span>
-          <strong>{Math.round(processing)}%</strong>
+          <span>PROCESSING STATUS</span>
+          <strong>{hasResult ? '100%' : isScanning ? 'In progress' : '0%'}</strong>
         </div>
+
         <div className="processing-bar">
           <motion.div
             className="processing-fill"
             initial={{ width: 0 }}
-            animate={{ width: `${processing}%` }}
+            animate={{ width: hasResult ? '100%' : isScanning ? '65%' : '0%' }}
             transition={{ duration: 0.7, ease: 'easeInOut' }}
           />
         </div>
       </div>
 
-      <motion.div className="meta-block" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
-        <div><span>MODEL</span> <strong>DeepGuard Vision v1</strong></div>
-        <div><span>ENGINE</span> <strong>PyTorch</strong></div>
-        <div><span>ANALYSIS MODE</span> <strong>FORENSIC</strong></div>
+      <motion.div
+        className="meta-block"
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+      >
+        <div>
+          <span>MODEL</span>
+          <strong>{modelLabel}</strong>
+        </div>
+        <div>
+          <span>ENGINE</span>
+          <strong>PyTorch</strong>
+        </div>
+        <div>
+          <span>ANALYSIS MODE</span>
+          <strong>{activeIsVideo ? 'VIDEO CLASSIFICATION' : 'IMAGE CLASSIFICATION'}</strong>
+        </div>
       </motion.div>
     </aside>
   )

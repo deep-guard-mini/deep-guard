@@ -1,3 +1,4 @@
+
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { motion } from 'framer-motion'
 import { AlertTriangle, Download, Printer } from 'lucide-react'
@@ -11,6 +12,7 @@ import { detectImage, detectVideo, isVideoFile } from '../services/api'
 
 export default function AnalyzePage({ onAnalysisComplete }) {
   const [selectedFile, setSelectedFile] = useState(null)
+  const [evidenceId, setEvidenceId] = useState(null)
   const [isScanning, setIsScanning] = useState(false)
   const [scanResult, setScanResult] = useState(null)
   const [scanError, setScanError] = useState(null)
@@ -29,11 +31,15 @@ export default function AnalyzePage({ onAnalysisComplete }) {
     }
   }, [previewUrl])
 
+  const generateEvidenceId = () =>
+    `DG-2026-${String(Math.floor(1000 + Math.random() * 9000))}`
+
   const handleFileSelection = (file) => {
     setSelectedFile(file)
     setScanResult(null)
     setScanError(null)
     setIsScanning(false)
+    setEvidenceId(generateEvidenceId())
   }
 
   const handleRemove = () => {
@@ -41,23 +47,78 @@ export default function AnalyzePage({ onAnalysisComplete }) {
     setScanResult(null)
     setScanError(null)
     setIsScanning(false)
+    setEvidenceId(null)
+
     if (inputRef.current) {
       inputRef.current.value = ''
     }
   }
 
-  const getReportId = () => `DG-2026-${String(Math.floor(Math.random() * 9000) + 1000)}`
-
   const downloadReport = () => {
     if (!scanResult) return
 
-    const reportText = `DEEPGUARD\nFORENSIC MEDIA ANALYSIS REPORT\nReport ID: ${scanResult.reportId}\nAnalysis Date: ${new Date(scanResult.analysisDate).toLocaleString()}\n\nEVIDENCE INFORMATION\nFilename: ${scanResult.filename}\nMedia Type: ${scanResult.mediaType}\nFile Size: ${scanResult.fileSize || '—'}\nResolution: ${scanResult.resolution || '—'}\nFrames Analyzed: ${scanResult.framesAnalyzed}\nFaces Detected: ${scanResult.facesDetected}\n\nAUTHENTICITY ASSESSMENT\n${scanResult.assessment}\n${scanResult.confidence.toFixed(1)}% MODEL CONFIDENCE\n\nFORENSIC INDICATORS\nFace Consistency: ${scanResult.indicators.faceConsistency}%\nTexture Consistency: ${scanResult.indicators.textureConsistency}%\nLighting Consistency: ${scanResult.indicators.lightingConsistency}%\nEdge Consistency: ${scanResult.indicators.edgeArtifacts}%\nCompression Artifacts: ${scanResult.indicators.compressionArtifacts}%\n\nSUMMARY\n${scanResult.note}`
+    const formatVal = (val, suffix = '') =>
+      val == null || val === undefined || Number.isNaN(val) ? 'Not available' : `${val}${suffix}`
+
+    const isVideo = scanResult.mediaType === 'video' || scanResult.type === 'video'
+    const reportModelName = isVideo
+      ? scanResult.demoMode
+        ? 'DeepGuard Temporal (Demo)'
+        : 'DeepGuard Video Classifier (ResNet50)'
+      : 'DeepGuard Vision v1 (ResNet50)'
+
+    const reportText = `=======================================================
+DEEPGUARD FORENSIC MEDIA ANALYSIS REPORT
+=======================================================
+Project Name: DeepGuard Media Forensics
+Report ID: ${scanResult.reportId || 'DG-2026-UNSPECIFIED'}
+Analysis Date: ${scanResult.analysisDate ? new Date(scanResult.analysisDate).toUTCString() : new Date().toUTCString()}
+
+EVIDENCE INFORMATION
+-------------------------------------------------------
+Filename: ${scanResult.filename || 'Unknown'}
+Media Type: ${(scanResult.mediaType || scanResult.type || 'image').toUpperCase()}
+File Size: ${scanResult.fileSize || 'Not available'}
+Resolution: ${scanResult.resolution && scanResult.resolution !== '—' ? scanResult.resolution : 'Not available'}
+Frames Analyzed: ${formatVal(scanResult.framesAnalyzed)}
+Faces Detected: ${formatVal(scanResult.facesDetected)}
+Artifacts Detected: ${formatVal(scanResult.artifactsDetected)}
+
+AUTHENTICITY ASSESSMENT
+-------------------------------------------------------
+Prediction: ${scanResult.prediction || 'INCONCLUSIVE'}
+Assessment: ${scanResult.assessment || 'INCONCLUSIVE'}
+Model Confidence: ${scanResult.confidence != null ? scanResult.confidence.toFixed(1) + '%' : 'Not available'}
+Model: ${reportModelName}
+Processing Time: ${scanResult.processingTime != null ? scanResult.processingTime.toFixed(2) + 's' : 'Not available'}
+Analysis Mode: ${scanResult.demoMode ? 'DEMO MODE' : 'TRAINED ML INFERENCE'}
+
+FORENSIC INDICATORS
+-------------------------------------------------------
+Face Consistency: ${formatVal(scanResult.indicators?.faceConsistency, '%')}
+Texture Consistency: ${formatVal(scanResult.indicators?.textureConsistency, '%')}
+Lighting Consistency: ${formatVal(scanResult.indicators?.lightingConsistency, '%')}
+Edge Artifacts: ${formatVal(scanResult.indicators?.edgeArtifacts, '%')}
+Compression Artifacts: ${formatVal(scanResult.indicators?.compressionArtifacts, '%')}
+
+SUMMARY & OBSERVATIONS
+-------------------------------------------------------
+${scanResult.note || 'No observations recorded.'}
+
+LIMITATIONS & DISCLAIMER
+-------------------------------------------------------
+This assessment is produced by an automated AI deep learning model.
+Model predictions represent statistical probability estimates and do NOT constitute
+definitive proof of authenticity or manipulation. Results should be verified by
+qualified forensic specialists alongside supporting provenance data.
+=======================================================`
 
     const blob = new Blob([reportText], { type: 'text/plain;charset=utf-8' })
     const url = URL.createObjectURL(blob)
     const link = document.createElement('a')
+    const cleanName = (scanResult.filename || 'deepguard-report').replace(/\.[^/.]+$/, '')
     link.href = url
-    link.download = `${scanResult.filename || 'deepguard-report'}.txt`
+    link.download = `${cleanName}_report_${scanResult.reportId}.txt`
     link.click()
     URL.revokeObjectURL(url)
   }
@@ -69,11 +130,17 @@ export default function AnalyzePage({ onAnalysisComplete }) {
   const startAnalysis = async () => {
     if (!selectedFile || isScanning) return
 
+    const activeEvidenceId = evidenceId || generateEvidenceId()
+    if (!evidenceId) {
+      setEvidenceId(activeEvidenceId)
+    }
+
     setIsScanning(true)
     setScanError(null)
     setScanResult(null)
 
     let result
+
     try {
       if (isVideoFile(selectedFile)) {
         result = await detectVideo(selectedFile)
@@ -82,7 +149,9 @@ export default function AnalyzePage({ onAnalysisComplete }) {
       }
     } catch (err) {
       setIsScanning(false)
-      setScanError(err.userMessage ?? 'An unexpected error occurred. Please try again.')
+      setScanError(
+        err.userMessage ?? 'An unexpected error occurred. Please try again.'
+      )
       return
     }
 
@@ -91,13 +160,13 @@ export default function AnalyzePage({ onAnalysisComplete }) {
       filename: selectedFile.name,
       type: result.mediaType || (isVideoFile(selectedFile) ? 'video' : 'image'),
       mediaType: result.mediaType || (isVideoFile(selectedFile) ? 'video' : 'image'),
-      reportId: getReportId(),
+      reportId: activeEvidenceId,
       analysisDate: new Date().toISOString(),
       fileSize: `${(selectedFile.size / 1024 / 1024).toFixed(2)} MB`,
-      resolution: selectedFile.type?.startsWith('image/') ? '—' : '—',
-      framesAnalyzed: result.framesAnalyzed ?? (isVideoFile(selectedFile) ? 120 : 1),
-      facesDetected: result.facesDetected ?? 0,
-      artifactsDetected: result.artifactsDetected ?? 0,
+      resolution: 'Not available',
+      framesAnalyzed: result.framesAnalyzed ?? (isVideoFile(selectedFile) ? null : 1),
+      facesDetected: result.facesDetected,
+      artifactsDetected: result.artifactsDetected,
       confidence: result.confidence ?? 0,
       processingTime: result.processingTime ?? 0,
       indicators: result.indicators ?? {},
@@ -122,9 +191,16 @@ export default function AnalyzePage({ onAnalysisComplete }) {
         </div>
       </div>
 
-      <p className="lead-copy">Submit digital media for authenticity analysis.</p>
+      <p className="lead-copy">
+        Submit digital media for authenticity analysis.
+      </p>
 
-      {!selectedFile && <UploadZone onSelectFile={handleFileSelection} inputRef={inputRef} />}
+      {!selectedFile && (
+        <UploadZone
+          onSelectFile={handleFileSelection}
+          inputRef={inputRef}
+        />
+      )}
 
       {selectedFile && !isScanning && !scanResult && !scanError && (
         <MediaPreview
@@ -136,7 +212,7 @@ export default function AnalyzePage({ onAnalysisComplete }) {
         />
       )}
 
-      {/* ── Error state ─────────────────────────────────────────────────── */}
+      {/* Error state */}
       {scanError && (
         <motion.div
           className="scan-error-banner"
@@ -147,7 +223,11 @@ export default function AnalyzePage({ onAnalysisComplete }) {
         >
           <AlertTriangle size={18} aria-hidden="true" />
           <span>{scanError}</span>
-          <button type="button" className="ghost-button" onClick={handleRemove}>
+          <button
+            type="button"
+            className="ghost-button"
+            onClick={handleRemove}
+          >
             TRY AGAIN
           </button>
         </motion.div>
@@ -155,21 +235,44 @@ export default function AnalyzePage({ onAnalysisComplete }) {
 
       {(isScanning || scanResult) && (
         <div className="analysis-workflow">
-          <Scanner file={selectedFile} previewUrl={previewUrl} isScanning={isScanning} result={scanResult} />
+          <Scanner
+            file={selectedFile}
+            previewUrl={previewUrl}
+            isScanning={isScanning}
+            result={scanResult}
+            evidenceId={evidenceId}
+          />
 
           {scanResult && (
             <>
               <div className="report-actions">
-                <button type="button" className="primary-button" onClick={downloadReport}>
+                <button
+                  type="button"
+                  className="primary-button"
+                  onClick={downloadReport}
+                >
                   <Download size={16} /> DOWNLOAD REPORT
                 </button>
-                <button type="button" className="secondary-button" onClick={printReport}>
+
+                <button
+                  type="button"
+                  className="secondary-button"
+                  onClick={printReport}
+                >
                   <Printer size={16} /> PRINT REPORT
                 </button>
-                <button type="button" className="ghost-button" onClick={handleRemove}>
+
+                <button
+                  type="button"
+                  className="ghost-button"
+                  onClick={handleRemove}
+                >
                   NEW ANALYSIS
                 </button>
-                <Link to="/history" className="ghost-button">VIEW HISTORY</Link>
+
+                <Link to="/history" className="ghost-button">
+                  VIEW HISTORY
+                </Link>
               </div>
 
               <motion.div
@@ -179,23 +282,43 @@ export default function AnalyzePage({ onAnalysisComplete }) {
                 transition={{ duration: 0.5 }}
               >
                 <ResultCard result={scanResult} />
+
                 <ForensicIndicators indicators={scanResult.indicators} />
 
+                {/* Region analysis placeholder: no fake anomaly regions */}
                 <div className="suspicious-panel">
                   <div className="section-title-row">
-                    <h3>SUSPICIOUS REGION ANALYSIS</h3>
+                    <h3>REGION-LEVEL ANALYSIS</h3>
                   </div>
+
                   <div className="suspicious-viewport">
                     {selectedFile?.type?.startsWith('video/') ? (
-                      <video src={previewUrl} className="suspicious-media" playsInline muted loop autoPlay />
+                      <video
+                        src={previewUrl}
+                        className="suspicious-media"
+                        playsInline
+                        muted
+                        loop
+                        autoPlay
+                      />
                     ) : (
-                      <img src={previewUrl} alt="Suspicious region overlay preview" className="suspicious-media" />
+                      <img
+                        src={previewUrl}
+                        alt="Uploaded media preview"
+                        className="suspicious-media"
+                      />
                     )}
-                    <div className="heat-overlay" />
-                    <div className="bounding-box box-one">REGION 01<br />HIGH ANOMALY</div>
-                    <div className="bounding-box box-two">REGION 02<br />MODERATE ANOMALY</div>
-                    <div className="demo-tag">DEMONSTRATION VISUALIZATION</div>
+
+                    <div className="demo-tag">
+                      REGION ANALYSIS NOT AVAILABLE
+                    </div>
                   </div>
+
+                  <p className="analysis-unavailable-note">
+                    DeepGuard currently performs image-level classification.
+                    Region-specific anomaly detection is not yet implemented,
+                    so suspicious areas cannot be identified or highlighted.
+                  </p>
                 </div>
               </motion.div>
             </>

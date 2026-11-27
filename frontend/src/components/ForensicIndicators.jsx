@@ -1,12 +1,15 @@
+
 import { motion } from 'framer-motion'
 
 export default function ForensicIndicators({ indicators }) {
+  // Preserve null when an indicator has not actually been measured.
+  // Do not convert unavailable data into false 0% readings.
   const entries = [
-    { label: 'Face consistency', value: indicators?.faceConsistency ?? 0 },
-    { label: 'Texture consistency', value: indicators?.textureConsistency ?? 0 },
-    { label: 'Lighting consistency', value: indicators?.lightingConsistency ?? 0 },
-    { label: 'Compression artifacts', value: indicators?.compressionArtifacts ?? 0 },
-    { label: 'Edge artifacts', value: indicators?.edgeArtifacts ?? 0 },
+    { label: 'Face consistency', value: indicators?.faceConsistency ?? null },
+    { label: 'Texture consistency', value: indicators?.textureConsistency ?? null },
+    { label: 'Lighting consistency', value: indicators?.lightingConsistency ?? null },
+    { label: 'Compression artifacts', value: indicators?.compressionArtifacts ?? null },
+    { label: 'Edge artifacts', value: indicators?.edgeArtifacts ?? null },
   ]
 
   return (
@@ -16,22 +19,33 @@ export default function ForensicIndicators({ indicators }) {
       </div>
 
       <div className="indicator-list">
-        {entries.map((item) => (
-          <div key={item.label} className="indicator-row">
-            <div className="indicator-labels">
-              <span>{item.label}</span>
-              <strong>{item.value}%</strong>
+        {entries.map((item) => {
+          // Check whether this indicator has a real value.
+          const isAvailable = item.value !== null
+
+          return (
+            <div key={item.label} className="indicator-row">
+              <div className="indicator-labels">
+                <span>{item.label}</span>
+
+                <strong>
+                  {isAvailable ? `${item.value}%` : 'Not analyzed'}
+                </strong>
+              </div>
+
+              <div className="bar-track">
+                {isAvailable && (
+                  <motion.div
+                    className="bar-fill"
+                    initial={{ width: 0 }}
+                    animate={{ width: `${item.value}%` }}
+                    transition={{ duration: 0.8, ease: 'easeOut' }}
+                  />
+                )}
+              </div>
             </div>
-            <div className="bar-track">
-              <motion.div
-                className="bar-fill"
-                initial={{ width: 0 }}
-                animate={{ width: `${item.value}%` }}
-                transition={{ duration: 0.8, ease: 'easeOut' }}
-              />
-            </div>
-          </div>
-        ))}
+          )
+        })}
       </div>
     </div>
   )
