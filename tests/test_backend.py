@@ -15,8 +15,12 @@ from __future__ import annotations
 
 import io
 import os
+import tempfile
+from pathlib import Path
 from unittest.mock import patch
 
+import cv2
+import numpy as np
 from fastapi.testclient import TestClient
 
 from PIL import Image
@@ -46,12 +50,28 @@ JPEG_BYTES = _generate_test_image("JPEG")
 PNG_BYTES  = _generate_test_image("PNG")
 WEBP_BYTES = _generate_test_image("WEBP")
 
+def _generate_test_video(suffix: str, fourcc: str) -> bytes:
+    fd, path = tempfile.mkstemp(suffix=suffix)
+    os.close(fd)
+    try:
+        writer = cv2.VideoWriter(path, cv2.VideoWriter_fourcc(*fourcc), 10, (64, 64))
+        frame = np.zeros((64, 64, 3), dtype=np.uint8)
+        for _ in range(8):
+            writer.write(frame)
+        writer.release()
+        return Path(path).read_bytes()
+    finally:
+        if os.path.exists(path):
+            os.remove(path)
+
+
 # Valid magic bytes with corrupted payload (for testing inference error handling)
 CORRUPT_JPEG_BYTES = b"\xff\xd8\xff\xe0" + b"\x00" * 128
+CORRUPT_MP4_BYTES  = b"\x00\x00\x00\x18ftypisom" + b"\x00" * 128
 
-MP4_BYTES  = b"\x00\x00\x00\x18ftypisom" + b"\x00" * 128
-MOV_BYTES  = b"\x00\x00\x00\x14ftypqt  " + b"\x00" * 128
-AVI_BYTES  = b"RIFF\x00\x00\x00\x00AVI " + b"\x00" * 128
+MP4_BYTES  = _generate_test_video(".mp4", "mp4v")
+MOV_BYTES  = _generate_test_video(".mov", "mp4v")
+AVI_BYTES  = _generate_test_video(".avi", "MJPG")
 
 # An unsupported format — PDF header
 PDF_BYTES  = b"%PDF-1.4\n" + b"\x00" * 128
@@ -123,18 +143,23 @@ def _assert_valid_detection_response(data: dict, expected_media_type: str) -> No
     # ── Optional/mode-specific fields ─────────────────────────────────────
     if expected_media_type == "video":
         assert isinstance(data["framesAnalyzed"], int) and data["framesAnalyzed"] > 0
-        assert data["facesDetected"] is None or isinstance(data["facesDetected"], int)
-        assert data["artifactsDetected"] is None or isinstance(data["artifactsDetected"], int)
-        assert data["demoMode"] is True, "demoMode should be True for video demo mode"
+        assert isinstance(data["facesDetected"], int) and data["facesDetected"] >= 0
+        assert data["artifactsDetected"] is None
+        assert data["demoMode"] is False, "demoMode should be False for real ML model"
 
         indicators = data["indicators"]
         assert isinstance(indicators, dict), "indicators must be a dict"
         missing_ind = _REQUIRED_INDICATOR_FIELDS - indicators.keys()
         assert not missing_ind, f"indicators missing fields: {missing_ind}"
         for key, val in indicators.items():
-            if val is not None:
-                assert isinstance(val, (int, float)), f"indicators.{key} must be numeric"
-                assert 0 <= val <= 100, f"indicators.{key}={val} out of 0–100 range"
+            assert val is None, f"indicators.{key} must be None when not analyzed"
+
+        probs = data.get("probabilities")
+        assert isinstance(probs, dict), "probabilities must be a dict"
+        assert set(probs.keys()) == {"REAL", "FAKE"}
+        assert 0.0 <= probs["REAL"] <= 1.0
+        assert 0.0 <= probs["FAKE"] <= 1.0
+        assert abs((probs["REAL"] + probs["FAKE"]) - 1.0) < 1e-3
     else:
         assert data["framesAnalyzed"] == 1, "framesAnalyzed must be 1 for image"
         assert data["facesDetected"] is None, "facesDetected should be None for image classifier"
@@ -349,20 +374,30 @@ class TestVideoDetectionSuccess:
         )
         assert 0.0 <= resp.json()["confidence"] <= 100.0
 
-    def test_all_indicator_values_within_0_to_100(self):
+    def test_indicators_are_none_for_fakestormer_video(self):
         resp = client.post(
             "/api/detect/video",
             files={"file": ("clip.mp4", io.BytesIO(MP4_BYTES), "video/mp4")},
         )
         for key, val in resp.json()["indicators"].items():
-            assert 0 <= val <= 100, f"indicators.{key}={val} out of range"
+            assert val is None, f"indicators.{key} must be None when not analyzed"
 
-    def test_demo_mode_is_true(self):
+    def test_demo_mode_is_false(self):
         resp = client.post(
             "/api/detect/video",
             files={"file": ("clip.mp4", io.BytesIO(MP4_BYTES), "video/mp4")},
         )
-        assert resp.json()["demoMode"] is True
+        assert resp.json()["demoMode"] is False
+
+    def test_corrupt_video_returns_422_invalid_video(self):
+        resp = client.post(
+            "/api/detect/video",
+            files={"file": ("corrupt.mp4", io.BytesIO(CORRUPT_MP4_BYTES), "video/mp4")},
+        )
+        assert resp.status_code == 422
+        detail = resp.json()["detail"]
+        assert detail["status"] == "error"
+        assert detail["error"] == "INVALID_VIDEO"
 
 
 # ===========================================================================
@@ -608,6 +643,25 @@ class TestTempFileCleanup:
         assert saved
         for p in saved:
             assert not os.path.exists(p), f"Temp file not cleaned up: {p}"
+
+    def test_temp_file_removed_after_invalid_video_error(self):
+        saved: list[str] = []
+
+        def _spy(path: str) -> dict:
+            saved.append(path)
+            from backend.services.video_service import process_video as _real
+            return _real(path)
+
+        with patch("backend.routers.detect.process_video", side_effect=_spy):
+            resp = client.post(
+                "/api/detect/video",
+                files={"file": ("corrupt.mp4", io.BytesIO(CORRUPT_MP4_BYTES), "video/mp4")},
+            )
+            assert resp.status_code == 422
+
+        assert saved
+        for p in saved:
+            assert not os.path.exists(p), f"Temp file not cleaned up after invalid video: {p}"
 
 
 # ===========================================================================

@@ -223,6 +223,14 @@ __marimo__/
 *.pth
 *.pt
 *.pth.tar
+*.pth.tmp
+
+# Runtime logs and sample media
+/logs/
+*.mp4
+*.mov
+*.avi
+*.webm
 
 # Temporary validation files
 fake.jpg
