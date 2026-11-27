@@ -2,12 +2,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { motion } from 'framer-motion'
 import { AlertTriangle, Download, Printer } from 'lucide-react'
+
 import { Link } from 'react-router-dom'
 import UploadZone from '../components/UploadZone'
 import MediaPreview from '../components/MediaPreview'
 import Scanner from '../components/Scanner'
 import ResultCard from '../components/ResultCard'
-import ForensicIndicators from '../components/ForensicIndicators'
+
 import { detectImage, detectVideo, isVideoFile } from '../services/api'
 
 export default function AnalyzePage({ onAnalysisComplete }) {
@@ -282,44 +283,6 @@ qualified forensic specialists alongside supporting provenance data.
                 transition={{ duration: 0.5 }}
               >
                 <ResultCard result={scanResult} />
-
-                <ForensicIndicators indicators={scanResult.indicators} />
-
-                {/* Region analysis placeholder: no fake anomaly regions */}
-                <div className="suspicious-panel">
-                  <div className="section-title-row">
-                    <h3>REGION-LEVEL ANALYSIS</h3>
-                  </div>
-
-                  <div className="suspicious-viewport">
-                    {selectedFile?.type?.startsWith('video/') ? (
-                      <video
-                        src={previewUrl}
-                        className="suspicious-media"
-                        playsInline
-                        muted
-                        loop
-                        autoPlay
-                      />
-                    ) : (
-                      <img
-                        src={previewUrl}
-                        alt="Uploaded media preview"
-                        className="suspicious-media"
-                      />
-                    )}
-
-                    <div className="demo-tag">
-                      REGION ANALYSIS NOT AVAILABLE
-                    </div>
-                  </div>
-
-                  <p className="analysis-unavailable-note">
-                    DeepGuard currently performs image-level classification.
-                    Region-specific anomaly detection is not yet implemented,
-                    so suspicious areas cannot be identified or highlighted.
-                  </p>
-                </div>
               </motion.div>
             </>
           )}
