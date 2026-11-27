@@ -61,7 +61,7 @@ export default function ScanProgress({ isScanning, result }) {
         ))}
       </div>
 
-      <div className="scan-metrics-grid">
+      {/* <div className="scan-metrics-grid">
         <div>
           <span className="metric-label">FRAME</span>
           <strong>{String(Math.min(Math.round(frames), 120)).padStart(3, '0')} / 120</strong>
@@ -78,9 +78,9 @@ export default function ScanProgress({ isScanning, result }) {
           <span className="metric-label">MODEL CONFIDENCE</span>
           <strong>{confidence.toFixed(1)}%</strong>
         </div>
-      </div>
+      </div> */}
 
-      <div className="processing-bar-wrap">
+      {/* <div className="processing-bar-wrap">
         <div className="processing-meta">
           <span>PROCESSING</span>
           <strong>{Math.round(processing)}%</strong>
@@ -93,13 +93,13 @@ export default function ScanProgress({ isScanning, result }) {
             transition={{ duration: 0.7, ease: 'easeInOut' }}
           />
         </div>
-      </div>
-
+      </div> */}
+{/* 
       <motion.div className="meta-block" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
         <div><span>MODEL</span> <strong>DeepGuard Vision v1</strong></div>
         <div><span>ENGINE</span> <strong>PyTorch</strong></div>
         <div><span>ANALYSIS MODE</span> <strong>FORENSIC</strong></div>
-      </motion.div>
+      </motion.div> */}
     </aside>
   )
 }
