@@ -32,7 +32,8 @@ app = FastAPI(
     title="DeepGuard API",
     description=(
         "AI-based deepfake detection API for image and video analysis.\n\n"
-        "Image analysis is powered by a trained ResNet50 deep learning model."
+        "Image analysis uses a trained ResNet50 model; video analysis uses a "
+        "trained FakeSTormer C23 spatio-temporal ViT model."
     ),
     version="1.0.0",
     docs_url="/api/docs",

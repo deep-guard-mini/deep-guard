@@ -1,6 +1,22 @@
-# Install in the same Python environment as the FastAPI backend.
-torch>=2.2
-torchvision>=0.17
-opencv-python-headless>=4.8
-Pillow>=10.0
-numpy>=1.26
+# DeepGuard Video Processing (FakeSTormer C23) — Python dependencies
+# Install in the same environment as backend/requirements.txt:
+#   pip install -r requirements-video-processing.txt
+
+torch
+torchvision
+timm
+einops
+mmengine
+ptflops
+huggingface-hub
+safetensors
+opencv-python-headless
+numpy
+Pillow
+PyYAML
+requests
+simplejson
+plotly
+addict
+yapf
+termcolor
