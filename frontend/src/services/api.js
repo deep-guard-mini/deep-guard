@@ -14,7 +14,11 @@
 
 import { analyzeMedia as mockAnalyzeMedia } from './mockAnalysis.js'
 
-const API_BASE_URL = (import.meta.env?.VITE_API_BASE_URL || '/api').replace(/\/$/, '')
+const rawBaseUrl = (import.meta.env?.VITE_API_BASE_URL || '/api').trim().replace(/\/$/, '')
+// Ensure the base URL includes /api if an external host is provided without it
+const API_BASE_URL = rawBaseUrl.endsWith('/api')
+  ? rawBaseUrl
+  : (rawBaseUrl.startsWith('http') ? `${rawBaseUrl}/api` : rawBaseUrl)
 
 /**
  * Handle network errors uniformly across all API requests.
@@ -23,7 +27,7 @@ function handleNetworkError(err) {
   if (err?.userMessage) throw err
   const networkError = new Error('Network error — could not reach the DeepGuard backend.')
   networkError.userMessage =
-    'Unable to connect to the analysis server. Please check that the backend is running at http://localhost:8000 and try again.'
+    'Unable to connect to the analysis server. Please ensure the backend is running and reachable, then try again.'
   networkError.cause = err
   throw networkError
 }

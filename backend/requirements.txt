@@ -1,5 +1,7 @@
-# DeepGuard Backend — Python dependencies
-# Install: pip install -r requirements.txt
+# DeepGuard Backend — Python dependencies (Web & API tier only)
+# For full production deployment (including ResNet-50 and FakeSTormer ML inference),
+# install the consolidated manifest at the repository root:
+#   pip install -r requirements.txt
 
 # Web framework & ASGI server
 fastapi>=0.115.0

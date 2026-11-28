@@ -1,0 +1,43 @@
+# =============================================================================
+# DeepGuard — Consolidated Production Dependencies
+# =============================================================================
+# Complete deployment dependency manifest covering the FastAPI backend and
+# both ML inference pipelines:
+#   1. Image Analysis: ResNet-50 binary classifier (PyTorch, TorchVision, Pillow)
+#   2. Video Analysis: FakeSTormer C23 Spatio-Temporal ViT (TimeViT, OpenCV, etc.)
+#
+# Standard Installation:
+#   pip install -r requirements.txt
+#
+# Cloud / CPU-Only Host Installation (recommended for memory/disk optimization):
+#   pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+#   pip install -r requirements.txt
+# =============================================================================
+
+# --- FastAPI & ASGI Web Server ---
+fastapi>=0.115.0
+uvicorn[standard]>=0.32.0
+python-multipart>=0.0.12
+
+# --- Deep Learning & Core Computer Vision ---
+torch>=2.0.0
+torchvision>=0.15.0
+Pillow>=10.0.0
+opencv-python-headless>=4.8.0
+numpy>=1.24.0
+
+# --- Video Processing & FakeSTormer Model Architecture ---
+timm>=0.9.0
+einops>=0.7.0
+mmengine>=0.10.0
+PyYAML>=6.0
+addict>=2.4.0
+requests>=2.28.0
+simplejson>=3.18.0
+ptflops>=0.7.0
+huggingface-hub>=0.20.0
+safetensors>=0.4.0
+
+# --- Testing & API Validation (used in CI / test client) ---
+httpx>=0.27.0
+pytest>=8.0.0

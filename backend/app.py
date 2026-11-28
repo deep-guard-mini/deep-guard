@@ -11,6 +11,7 @@ Interactive API docs:
 """
 
 import logging
+import os
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -44,15 +45,36 @@ app = FastAPI(
 # ---------------------------------------------------------------------------
 # CORS
 # ---------------------------------------------------------------------------
-# Allow Vite development servers to call the API without CORS errors.
+# Default development origins for local Vite / frontend dev servers.
+DEFAULT_DEV_ORIGINS: list[str] = [
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+]
+
+
+def get_allowed_origins() -> list[str]:
+    """
+    Parse allowed CORS origins from the ALLOWED_ORIGINS environment variable.
+
+    Supports comma-separated URLs, strips whitespace, and removes empty items.
+    Always includes local development origins so local testing continues working.
+    Avoids accidentally allowing unrestricted wildcard '*' origins in production.
+    """
+    origins = list(DEFAULT_DEV_ORIGINS)
+    raw_origins = os.getenv("ALLOWED_ORIGINS", "").strip()
+    if raw_origins:
+        for entry in raw_origins.split(","):
+            cleaned = entry.strip()
+            if cleaned and cleaned not in origins:
+                origins.append(cleaned)
+    return origins
+
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-        "http://localhost:3000",
-        "http://127.0.0.1:3000",
-    ],
+    allow_origins=get_allowed_origins(),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -63,3 +85,13 @@ app.add_middleware(
 # ---------------------------------------------------------------------------
 app.include_router(health.router)
 app.include_router(detect.router)
+
+
+# ---------------------------------------------------------------------------
+# Direct execution / platform entrypoint
+# ---------------------------------------------------------------------------
+if __name__ == "__main__":
+    import uvicorn
+
+    port = int(os.getenv("PORT", "8000"))
+    uvicorn.run("backend.app:app", host="0.0.0.0", port=port, reload=False)
