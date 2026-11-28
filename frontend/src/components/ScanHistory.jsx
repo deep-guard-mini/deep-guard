@@ -18,7 +18,7 @@ export default function ScanHistory({ history, onViewRecord, onDeleteRecord, onC
 
       {history.length === 0 ? (
         <div className="empty-history">
-          <p>No completed scans yet. Run a mock analysis to populate your forensic timeline.</p>
+          <p>No completed scans yet. Analyze an image or video to populate your forensic evidence archive.</p>
         </div>
       ) : (
         <div className="history-table-wrap">

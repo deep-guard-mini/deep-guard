@@ -218,3 +218,20 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# DeepGuard model checkpoints (keep weights out of Git)
+*.pth
+*.pt
+*.pth.tar
+*.pth.tmp
+
+# Runtime logs and sample media
+/logs/
+*.mp4
+*.mov
+*.avi
+*.webm
+
+# Temporary validation files
+fake.jpg
+corrupt.jpg

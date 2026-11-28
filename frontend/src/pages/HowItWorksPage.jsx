@@ -5,7 +5,7 @@ const steps = [
   { title: 'Upload Media', description: 'Load an image or video into the DeepGuard workflow for forensic triage.', icon: FileUp },
   { title: 'Preprocessing', description: 'Normalize frames, inspect metadata, and isolate suspicious regions for review.', icon: Wand2 },
   { title: 'Face Detection', description: 'Identify faces, landmarks, and relevant local inconsistencies within the media signal.', icon: ScanLine },
-  { title: 'Deep Learning Analysis', description: 'Evaluate texture, noise, and artifact patterns using a mock forensic scoring model.', icon: BrainCircuit },
+  { title: 'Deep Learning Analysis', description: 'Evaluate authentic vs. synthetic visual patterns using our trained ResNet50 classification model.', icon: BrainCircuit },
   { title: 'Authenticity Score', description: 'Generate confidence-driven verdicts and likelihood estimates for manipulation.', icon: ShieldCheck },
   { title: 'Forensic Report', description: 'Visualize indicators, suspicious areas, and the overall evidence summary.', icon: Sparkles },
 ]
